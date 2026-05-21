@@ -43,11 +43,24 @@ jobs:
         
         echo "$PUBLISH_PROFILE" > /tmp/publishprofile.xml
         
+        # Extract credentials - fixed patterns
         USERNAME=$(grep -oP 'userName="\K[^"]+' /tmp/publishprofile.xml | head -1)
         PASSWORD=$(grep -oP 'userPWD="\K[^"]+' /tmp/publishprofile.xml | head -1)
-        PUBLISH_URL=$(grep -oP 'publishUrl="https://\K[^"]+' /tmp/publishprofile.xml | head -1)
+        PUBLISH_URL=$(grep -oP 'publishUrl="\K[^"]+' /tmp/publishprofile.xml | head -1)
         
-        # Safe debugging - only shows first 3 and last 3 chars
+        # Remove https:// prefix if present
+        PUBLISH_URL="${PUBLISH_URL#https://}"
+        PUBLISH_URL="${PUBLISH_URL#http://}"
+        
+        echo "DEBUG: USERNAME length = ${#USERNAME}"
+        echo "DEBUG: PASSWORD length = ${#PASSWORD}"
+        echo "DEBUG: PUBLISH_URL = $PUBLISH_URL"
+        
+        if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ] || [ -z "$PUBLISH_URL" ]; then
+          echo "✗ ERROR: Failed to extract credentials from publish profile"
+          exit 1
+        fi
+        
         USERNAME_MASKED="${USERNAME:0:3}***${USERNAME: -3}"
         echo "✓ Username extracted: $USERNAME_MASKED"
         echo "✓ Password extracted: (length: ${#PASSWORD})"
@@ -57,12 +70,16 @@ jobs:
         HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "$USERNAME:$PASSWORD" \
           "https://$PUBLISH_URL/api/settings")
         
+        echo "HTTP Status: $HTTP_STATUS"
+        
         if [ "$HTTP_STATUS" = "200" ]; then
           echo "✓ Credentials are valid (HTTP 200)"
         else
           echo "✗ Credentials failed (HTTP $HTTP_STATUS)"
           exit 1
         fi
+        
+        rm /tmp/publishprofile.xml
 
   build-and-deploy:
     runs-on: ubuntu-latest
