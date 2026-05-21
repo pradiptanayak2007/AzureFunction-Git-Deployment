@@ -1,0 +1,66 @@
+name: Deploy Python project to Azure Function App
+
+on:
+    workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_NAME: 'DemoFunctionApp'
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: 'Login to Azure using OIDC'
+      uses: azure/login@v1
+      with:
+        client-id: cdfb16ec-a0cb-46fc-9fd8-60280661e9b3
+        tenant-id: 687f51c3-0c5d-4905-84f8-97c683a5b9d1
+        subscription-id: 6e3ea17b-2afc-4119-add5-3484ddcf284e
+
+    - name: Setup Python ${{ env.PYTHON_VERSION }} Environment
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 'Resolve Project Dependencies Using Pip'
+      shell: bash
+      run: |
+        pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+        popd
+
+    - name: 'Deploy to Azure Functions'
+      uses: Azure/functions-action@v1
+      id: fa
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+        scm-do-build-during-deployment: true
+        enable-oryx-build: true
+
+    - name: 'Deployment Summary'
+      if: success()
+      run: |
+        echo "✓ Successfully deployed to ${{ env.AZURE_FUNCTIONAPP_NAME }}"
+        echo "Deployment completed at $(date)"
+
+    - name: 'Deployment Failed'
+      if: failure()
+      run: |
+        echo "❌ Deployment failed"
+        echo "Please check:"
+        echo "1. OIDC federated credential is configured correctly"
+        echo "2. Service Principal has Contributor role"
+        echo "3. AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID secrets are set"
+        exit 1
